@@ -15,7 +15,7 @@ from .niri import NiriIPC
 from .sway import SwayIPC
 from .models import Profile, apply_clamshell, undo_clamshell
 from .profile_manager import ProfileManager
-from .utils import load_app_settings
+from .utils import load_app_settings, save_active_profile
 
 try:
     import pyudev
@@ -303,6 +303,7 @@ class MonitorDaemon:
                 self._prev_applied_profile = self._last_applied_profile
                 self._last_applied_profile = profile.name
                 self._last_applied_fingerprint = set(fingerprint)
+                save_active_profile(profile.name)
 
                 # Migrate orphaned workspaces (Niri handles this natively)
                 if not isinstance(ipc, NiriIPC) and settings.get("migrate_workspaces", True):

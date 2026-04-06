@@ -164,3 +164,14 @@ def load_app_settings() -> dict:
 def save_app_settings(settings: dict) -> None:
     """Save global application settings."""
     write_json(_settings_path(), settings)
+
+
+def save_active_profile(name: str | None) -> None:
+    """Persist the name of the last applied profile."""
+    settings = load_app_settings()
+    write_json(_settings_path(), {**settings, "active_profile": name})
+
+
+def get_active_profile() -> str | None:
+    """Return the name of the last applied profile, or None."""
+    return load_app_settings().get("active_profile")

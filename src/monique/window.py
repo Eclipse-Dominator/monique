@@ -24,6 +24,7 @@ from .utils import (
     is_greetd_running,
     load_app_settings,
     save_app_settings,
+    save_active_profile,
 )
 
 import os
@@ -1017,6 +1018,7 @@ class MainWindow(Adw.ApplicationWindow):
                 bak.unlink()
             self._migrated_workspaces = []
             self._base_profile_name = self._current_profile_name
+            save_active_profile(self._current_profile_name or None)
             self._toast("Settings kept")
         else:
             self._do_revert()
