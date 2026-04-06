@@ -86,6 +86,42 @@ cd monique
 makepkg -si
 ```
 
+### NixOS / Nix
+
+**Con flake** (raccomandato) — aggiungilo come input e usa il modulo NixOS:
+
+```nix
+# flake.nix
+inputs.monique.url = "github:ToRvaLDz/monique";
+
+# configuration.nix (tramite module)
+{ inputs, ... }: {
+  imports = [ inputs.monique.nixosModules.default ];
+  programs.monique.enable = true;
+}
+```
+
+**Run senza installare:**
+
+```bash
+nix run github:ToRvaLDz/monique
+```
+
+**Installazione nello user profile:**
+
+```bash
+nix profile install github:ToRvaLDz/monique
+```
+
+**Con overlay:**
+
+```nix
+nixpkgs.overlays = [ inputs.monique.overlays.default ];
+environment.systemPackages = [ pkgs.monique ];
+```
+
+> **Nota polkit:** il modulo NixOS installa automaticamente la regola polkit per le scritture su SDDM/greetd senza password. Disabilitabile con `programs.monique.enablePolkit = false`.
+
 ### PyPI
 
 ```bash
@@ -108,6 +144,7 @@ pip install .
 | Fedora | `python3 python3-gobject gtk4 libadwaita` |
 | openSUSE | `python3 python3-gobject gtk4 libadwaita typelib-1_0-Adw-1 typelib-1_0-Gtk-4_0` |
 | Ubuntu / Debian | `python3 python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 libadwaita-1-0` |
+| NixOS | gestito automaticamente dal flake |
 
 **Optional:** `python-pyudev` (hardware hotplug detection for Niri)
 
