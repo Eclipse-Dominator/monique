@@ -70,6 +70,9 @@
 - **Workspace migration** — automatically moves workspaces to the primary monitor when their monitor is disabled or unplugged (reverted if you click "Revert")
 - **Clamshell mode** — disable the internal laptop display when external monitors are connected (manual toggle in the toolbar or automatic via daemon preferences); the daemon also monitors the lid state via UPower D-Bus
 - **Confirm-or-revert** — 10-second countdown after applying, auto-reverts if display is unusable
+- **CLI interface** — list, query, and switch profiles from the terminal (`--list-profiles`, `--current-profile`, `--switch-profile`), perfect for hotkey bindings
+- **Custom config directory** — write `monitors.conf` to a custom path instead of the compositor default (via Preferences or `--config-dir`)
+- **Active profile tracking** — the last applied profile is persisted across GUI, CLI, and daemon, queryable via `--current-profile`
 
 ## Installation
 
@@ -159,6 +162,24 @@ monique
 
 Open the graphical editor to arrange monitors, set resolutions, scale, rotation, and manage profiles.
 
+### CLI
+
+```bash
+# List all saved profiles (JSON array)
+monique --list-profiles
+
+# Get the currently active profile
+monique --current-profile
+
+# Switch to a profile
+monique --switch-profile "Office"
+
+# Switch with a custom config output directory
+monique --config-dir ~/my-hypr-config --switch-profile "Office"
+```
+
+Bind `monique --switch-profile <name>` to any compositor hotkey for quick profile switching.
+
 ### Daemon
 
 ```bash
@@ -224,6 +245,8 @@ Monitor config files are written to the compositor's config directory:
 - **Hyprland:** `~/.config/hypr/monitors.conf`
 - **Sway:** `~/.config/sway/monitors.conf`
 - **Niri:** `~/.config/niri/monitors.kdl`
+
+To use a custom output directory, set it in **Preferences → Config Output** or pass `--config-dir` on the command line.
 
 ## Project structure
 
