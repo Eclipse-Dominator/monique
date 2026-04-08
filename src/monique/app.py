@@ -92,6 +92,11 @@ def main() -> None:
         description="MONitor Integrated QUick Editor",
         add_help=True,
     )
+    parser.add_argument(
+        "--config-dir",
+        metavar="PATH",
+        help="Override output directory for monitors.conf",
+    )
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
         "--list-profiles",
@@ -111,6 +116,11 @@ def main() -> None:
 
     # argparse intercetta --help ma lascia passare gli argomenti GTK
     args, remaining = parser.parse_known_args()
+
+    # Override runtime della directory di output (ha priorità sulle settings)
+    if args.config_dir:
+        from . import utils
+        utils._runtime_config_dir = args.config_dir
 
     if args.list_profiles:
         sys.exit(_cmd_list_profiles())

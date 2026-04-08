@@ -362,6 +362,20 @@ class MainWindow(Adw.ApplicationWindow):
         sw_port.connect("notify::active", self._on_port_names_switch_changed)
         grp_id.add(sw_port)
 
+        # ── Output Directory group ──
+        grp_out = Adw.PreferencesGroup(
+            title="Config Output",
+            description="Where monitors.conf is written (leave empty for compositor default)",
+        )
+        page.add(grp_out)
+
+        entry_config_dir = Adw.EntryRow(
+            title="Custom config directory",
+        )
+        entry_config_dir.set_text(self._app_settings.get("config_dir", ""))
+        entry_config_dir.connect("changed", self._on_config_dir_changed)
+        grp_out.add(entry_config_dir)
+
         # ── Display Manager group ──
         grp_dm = Adw.PreferencesGroup(
             title="Display Manager",
@@ -471,6 +485,15 @@ class MainWindow(Adw.ApplicationWindow):
         self._canvas.set_use_description(not new_val)
         mode = "port names" if new_val else "descriptions"
         self._toast(f"Monitor identification: {mode}")
+
+    def _on_config_dir_changed(self, row: Adw.EntryRow) -> None:
+        """Handle the config directory entry change in preferences."""
+        text = row.get_text().strip()
+        if text:
+            self._app_settings["config_dir"] = text
+        else:
+            self._app_settings.pop("config_dir", None)
+        save_app_settings(self._app_settings)
 
     def _on_clamshell_switch_changed(self, row: Adw.SwitchRow, pspec) -> None:
         """Handle the clamshell mode switch toggle in preferences."""

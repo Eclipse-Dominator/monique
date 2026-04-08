@@ -11,6 +11,9 @@ from pathlib import Path
 
 APP_ID = "com.github.monique"
 
+# Override runtime impostato via --config-dir (priorità su settings.json)
+_runtime_config_dir: str | None = None
+
 
 def config_dir() -> Path:
     """Return ~/.config/monique, creating it if needed."""
@@ -42,20 +45,42 @@ def is_niri_installed() -> bool:
     return shutil.which("niri") is not None
 
 
+def _config_dir_override() -> Path | None:
+    """Restituisce il percorso personalizzato per monitors.conf, se configurato.
+
+    Priorità: --config-dir (runtime) > settings.json > default del compositor.
+    """
+    if _runtime_config_dir:
+        return Path(_runtime_config_dir).expanduser()
+    override = load_app_settings().get("config_dir")
+    if override:
+        return Path(override).expanduser()
+    return None
+
+
 def sway_config_dir() -> Path:
     """Return the Sway config directory."""
+    override = _config_dir_override()
+    if override:
+        return override
     base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     return base / "sway"
 
 
 def hyprland_config_dir() -> Path:
     """Return the Hyprland config directory."""
+    override = _config_dir_override()
+    if override:
+        return override
     base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     return base / "hypr"
 
 
 def niri_config_dir() -> Path:
     """Return the Niri config directory."""
+    override = _config_dir_override()
+    if override:
+        return override
     base = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
     return base / "niri"
 
