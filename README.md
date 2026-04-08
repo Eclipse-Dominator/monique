@@ -20,7 +20,6 @@
   <img alt="Python 3.11+" src="https://img.shields.io/badge/python-3.11+-green">
   <img alt="GTK4 + Adwaita" src="https://img.shields.io/badge/toolkit-GTK4%20%2B%20Adwaita-purple">
   <br>
-  <a href="https://github.com/ToRvaLDz/monique/stargazers"><img alt="Stars" src="https://img.shields.io/github/stars/ToRvaLDz/monique?style=flat&color=yellow&v=0.6.3"></a>
   <img alt="Last commit" src="https://img.shields.io/github/last-commit/ToRvaLDz/monique?color=teal&v=0.6.3">
   <img alt="Repo size" src="https://img.shields.io/github/repo-size/ToRvaLDz/monique?color=gray&v=0.6.3">
   <br>
@@ -28,6 +27,14 @@
   <img alt="Sway" src="https://img.shields.io/badge/Sway-%2368751a?logo=sway&logoColor=white">
   <img alt="Niri" src="https://img.shields.io/badge/Niri-%23c77dff">
   <img alt="Wayland" src="https://img.shields.io/badge/Wayland-%23ffbc00?logo=wayland&logoColor=black">
+</p>
+
+<p align="center">
+  <a href="https://github.com/ToRvaLDz/monique/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/ToRvaLDz/monique?style=social"></a>
+</p>
+
+<p align="center">
+  <a href="https://buymeacoffee.com/marcomigozzi"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" width="200"></a>
 </p>
 
 ---
