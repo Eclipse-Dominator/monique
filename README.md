@@ -273,6 +273,14 @@ src/monique/
 └── utils.py             # Paths, file I/O, helpers
 ```
 
+## Contributors
+
+Thanks to everyone who has contributed to Monique!
+
+<a href="https://github.com/ToRvaLDz/monique/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=ToRvaLDz/monique" alt="Contributors" />
+</a>
+
 ## License
 
 [GPL-3.0-or-later](LICENSE)
