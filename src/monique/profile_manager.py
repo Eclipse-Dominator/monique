@@ -79,7 +79,7 @@ class ProfileManager:
             return None
 
         current_set = set(current_fingerprint)
-        candidates: list[tuple[float, int, int, int, int, Profile]] = []
+        candidates: list[tuple[float, int, int, int, int, float, Profile]] = []
 
         for profile in self.list_all():
             fp = profile.fingerprint
