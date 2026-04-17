@@ -157,7 +157,8 @@ class NiriIPC:
                 for out in raw_outputs.values():
                     make = out.get("make", "")
                     model = out.get("model", "")
-                    serial = out.get("serial") or ""
+                    serial_raw = out.get("serial")
+                    serial = serial_raw if serial_raw is not None else "Unknown"
                     raw_parts = [p for p in (make, model, serial) if p]
                     raw_desc = " ".join(raw_parts)
                     # Build the normalised key (same logic as __post_init__)
