@@ -99,39 +99,39 @@ makepkg -si
 
 ### NixOS / Nix
 
-**Con flake** (raccomandato) — aggiungilo come input e usa il modulo NixOS:
+**With flake** (recommended) -- add it as an input and use the NixOS module:
 
 ```nix
 # flake.nix
 inputs.monique.url = "github:ToRvaLDz/monique";
 
-# configuration.nix (tramite module)
+# configuration.nix (via module)
 { inputs, ... }: {
   imports = [ inputs.monique.nixosModules.default ];
   programs.monique.enable = true;
 }
 ```
 
-**Run senza installare:**
+**Run without installing:**
 
 ```bash
 nix run github:ToRvaLDz/monique
 ```
 
-**Installazione nello user profile:**
+**Install to user profile:**
 
 ```bash
 nix profile install github:ToRvaLDz/monique
 ```
 
-**Con overlay:**
+**With overlay:**
 
 ```nix
 nixpkgs.overlays = [ inputs.monique.overlays.default ];
 environment.systemPackages = [ pkgs.monique ];
 ```
 
-> **Nota polkit:** il modulo NixOS installa automaticamente la regola polkit per le scritture su SDDM/greetd senza password. Disabilitabile con `programs.monique.enablePolkit = false`.
+> **Polkit note:** the NixOS module automatically installs the polkit rule for passwordless SDDM/greetd writes. Disable with `programs.monique.enablePolkit = false`.
 
 ### PyPI
 
