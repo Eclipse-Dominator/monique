@@ -523,7 +523,7 @@ class MainWindow(Adw.ApplicationWindow):
         about = Adw.AboutDialog(
             application_name="Monique",
             application_icon="com.github.monique",
-            version="0.6.5",
+            version="0.6.6",
             developer_name="Monique contributors",
             comments="MONitor Integrated QUick Editor for Hyprland and Sway",
             license_type=Gtk.License.GPL_3_0,
