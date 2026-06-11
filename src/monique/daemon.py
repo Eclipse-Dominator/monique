@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -464,18 +465,23 @@ class MonitorDaemon:
             log.info("Migrated %d workspace(s) to %s", migrated, primary)
 
 
-def main() -> None:
+async def _amain() -> None:
     daemon = MonitorDaemon()
-    loop = asyncio.new_event_loop()
+    task = asyncio.ensure_future(daemon.run())
 
-    # Handle signals for clean shutdown
+    # Su SIGTERM/SIGINT cancella il task: il loop di run() è un `while True` che
+    # non termina mai, quindi fermare l'event loop a freddo (loop.stop) farebbe
+    # sollevare "Event loop stopped before Future completed" e uscire con errore.
+    loop = asyncio.get_running_loop()
     for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, loop.stop)
+        loop.add_signal_handler(sig, task.cancel)
 
+    with contextlib.suppress(asyncio.CancelledError):
+        await task
+
+
+def main() -> None:
     try:
-        loop.run_until_complete(daemon.run())
-    except KeyboardInterrupt:
-        pass
+        asyncio.run(_amain())
     finally:
-        loop.close()
         log.info("Daemon stopped")
