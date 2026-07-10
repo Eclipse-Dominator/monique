@@ -6,8 +6,10 @@ import asyncio
 import json
 import os
 import socket
+from pathlib import Path
 from typing import AsyncIterator
 
+from .config_paths import NIRI, compositor_config_paths
 from .hypr_config import write_hyprland_configs
 from .models import MonitorConfig, Profile
 from .utils import (
@@ -137,6 +139,10 @@ class NiriIPC:
     def reload(self) -> None:
         """No-op: Niri auto-reloads config files on change."""
         pass
+
+    def config_paths(self, *, hypr_config_format: str | None = None) -> list[Path]:
+        """Return the config files apply_profile() writes (for backup/revert)."""
+        return compositor_config_paths(NIRI, hypr_config_format=hypr_config_format)
 
     def apply_profile(
         self, profile: Profile, *, update_sddm: bool = True,

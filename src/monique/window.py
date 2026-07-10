@@ -20,7 +20,6 @@ from .utils import (
     HYPR_FORMAT_BOTH,
     HYPR_FORMAT_LEGACY,
     HYPR_FORMAT_LUA,
-    niri_config_dir,
     normalize_hypr_format,
     backup_file,
     restore_backup,
@@ -1071,12 +1070,9 @@ class MainWindow(Adw.ApplicationWindow):
             workspace_rules=list(self._workspace_rules),
         )
 
-        # Determine config path based on compositor
+        # The IPC client knows which files it writes, cross-writes included
         hypr_fmt = normalize_hypr_format(self._app_settings.get("hypr_config_format"))
-        if isinstance(self._ipc, NiriIPC):
-            config_paths = [niri_config_dir() / "monitors.kdl"]
-        else:
-            config_paths = hyprland_config_paths(hypr_fmt)
+        config_paths = self._ipc.config_paths(hypr_config_format=hypr_fmt)
 
         # Snapshot workspaces (for revert)
         self._ws_snapshot = self._ipc.get_workspaces()

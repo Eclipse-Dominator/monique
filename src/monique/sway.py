@@ -7,8 +7,10 @@ import json
 import os
 import socket
 import struct
+from pathlib import Path
 from typing import AsyncIterator
 
+from .config_paths import SWAY, compositor_config_paths
 from .hypr_config import write_hyprland_configs
 from .models import MonitorConfig, Profile
 from .utils import (
@@ -102,6 +104,10 @@ class SwayIPC:
     def reload(self) -> dict:
         """Reload Sway configuration."""
         return self._send(IPC_COMMAND, "reload")
+
+    def config_paths(self, *, hypr_config_format: str | None = None) -> list[Path]:
+        """Return the config files apply_profile() writes (for backup/revert)."""
+        return compositor_config_paths(SWAY, hypr_config_format=hypr_config_format)
 
     def apply_profile(
         self, profile: Profile, *, update_sddm: bool = True,
