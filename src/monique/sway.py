@@ -9,10 +9,10 @@ import socket
 import struct
 from typing import AsyncIterator
 
+from .hypr_config import write_hyprland_configs
 from .models import MonitorConfig, Profile
 from .utils import (
     is_hyprland_installed,
-    hyprland_config_dir,
     sway_config_dir,
     is_niri_installed,
     niri_config_dir,
@@ -106,6 +106,7 @@ class SwayIPC:
     def apply_profile(
         self, profile: Profile, *, update_sddm: bool = True,
         update_greetd: bool = True, use_description: bool = False,
+        hypr_config_format: str | None = None,
     ) -> None:
         """Write monitor config and reload Sway."""
         conf_dir = sway_config_dir()
@@ -119,12 +120,9 @@ class SwayIPC:
 
         # Also write Hyprland config if Hyprland is installed
         if is_hyprland_installed():
-            hypr_conf = hyprland_config_dir() / "monitors.conf"
-            hypr_lua = hyprland_config_dir() / "monitors.lua"
-            backup_file(hypr_conf)
-            backup_file(hypr_lua)
-            write_text(hypr_conf, profile.generate_config(use_description=use_description))
-            write_text(hypr_lua, profile.generate_lua_config(use_description=use_description))
+            write_hyprland_configs(
+                profile, fmt=hypr_config_format, use_description=use_description,
+            )
 
         # Also write Niri config if Niri is installed
         if is_niri_installed():

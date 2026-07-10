@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field, asdict
 from enum import Enum
 from typing import ClassVar
@@ -94,6 +95,31 @@ def _lua_scalar(value: bool | int | float | str) -> str:
 
 def _lua_field(name: str, value: bool | int | float | str, indent: int = 2) -> str:
     return f"{' ' * indent}{name} = {_lua_scalar(value)},"
+
+
+def _unlua_string(literal: str) -> str:
+    """Return the Python string behind a double-quoted Lua string literal."""
+    if not (len(literal) >= 2 and literal.startswith('"') and literal.endswith('"')):
+        return literal
+    body = literal[1:-1]
+    out: list[str] = []
+    escapes = {"n": "\n", "r": "\r", '"': '"', "\\": "\\"}
+    i = 0
+    while i < len(body):
+        ch = body[i]
+        if ch == "\\" and i + 1 < len(body):
+            nxt = body[i + 1]
+            out.append(escapes.get(nxt, nxt))
+            i += 2
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+# Coppie ``chiave = valore`` di una tabella Lua; il valore è una stringa
+# quotata (con escape) oppure un literal senza virgole/spazi.
+_LUA_FIELD_RE = re.compile(r'(\w+)\s*=\s*("(?:[^"\\]|\\.)*"|[^,}\s]+)')
 
 
 # ── MonitorConfig ────────────────────────────────────────────────────────
@@ -999,6 +1025,56 @@ class WorkspaceRule:
                         except ValueError:
                             pass
                         break
+
+        return rule
+
+    @classmethod
+    def from_hyprland_lua_line(cls, line: str) -> WorkspaceRule | None:
+        """Parse an ``hl.workspace_rule({ ... })`` line from a monitors.lua file."""
+        line = line.strip()
+        if not line.startswith("hl.workspace_rule("):
+            return None
+
+        start = line.find("{")
+        end = line.rfind("}")
+        if start == -1 or end == -1 or end < start:
+            return None
+
+        fields = {
+            key: value
+            for key, value in _LUA_FIELD_RE.findall(line[start + 1:end])
+        }
+        workspace = fields.pop("workspace", None)
+        if workspace is None:
+            return None
+
+        rule = cls(workspace=_unlua_string(workspace))
+
+        # I flag negati (no_rounding/no_border) invertono la semantica: il
+        # formato Lua è booleano, quello legacy usa interi 0/1.
+        _BOOL_FIELDS = {"default": "default", "persistent": "persistent"}
+        _NEGATED_FIELDS = {"no_rounding": "rounding", "no_border": "border"}
+        _INT_FIELDS = {
+            "gaps_in": "gapsin",
+            "gaps_out": "gapsout",
+            "border_size": "bordersize",
+        }
+
+        for key, raw in fields.items():
+            if key in ("monitor", "on_created_empty"):
+                setattr(rule, key if key == "monitor" else "on_created_empty",
+                        _unlua_string(raw))
+            elif key in _BOOL_FIELDS:
+                setattr(rule, _BOOL_FIELDS[key], raw == "true")
+            elif key in _NEGATED_FIELDS:
+                setattr(rule, _NEGATED_FIELDS[key], 0 if raw == "true" else 1)
+            elif key == "decorate":
+                rule.decorate = 1 if raw == "true" else 0
+            elif key in _INT_FIELDS:
+                try:
+                    setattr(rule, _INT_FIELDS[key], int(raw))
+                except ValueError:
+                    pass
 
         return rule
 

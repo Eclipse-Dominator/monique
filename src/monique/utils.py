@@ -11,6 +11,15 @@ from pathlib import Path
 
 APP_ID = "com.github.monique"
 
+# Formati di configurazione monitor supportati da Hyprland.
+# "legacy" = hyprlang (monitors.conf), "lua" = Hyprland >= 0.55 (monitors.lua)
+HYPR_FORMAT_LEGACY = "legacy"
+HYPR_FORMAT_LUA = "lua"
+HYPR_FORMAT_BOTH = "both"
+HYPR_FORMATS = (HYPR_FORMAT_LEGACY, HYPR_FORMAT_LUA, HYPR_FORMAT_BOTH)
+# Default retrocompatibile: scrive entrambi i file, come prima dell'opzione
+DEFAULT_HYPR_FORMAT = HYPR_FORMAT_BOTH
+
 # Override runtime impostato via --config-dir (priorità su settings.json)
 _runtime_config_dir: str | None = None
 
@@ -189,6 +198,18 @@ def load_app_settings() -> dict:
 def save_app_settings(settings: dict) -> None:
     """Save global application settings."""
     write_json(_settings_path(), settings)
+
+
+def normalize_hypr_format(value: object) -> str:
+    """Return a valid Hyprland config format, falling back to the default."""
+    if isinstance(value, str) and value in HYPR_FORMATS:
+        return value
+    return DEFAULT_HYPR_FORMAT
+
+
+def get_hypr_config_format() -> str:
+    """Return the Hyprland config format selected in the app settings."""
+    return normalize_hypr_format(load_app_settings().get("hypr_config_format"))
 
 
 def save_active_profile(name: str | None) -> None:

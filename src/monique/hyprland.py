@@ -8,10 +8,10 @@ import socket
 from pathlib import Path
 from typing import AsyncIterator
 
+from .hypr_config import write_hyprland_configs
 from .models import MonitorConfig, Profile, WorkspaceRule
 from .utils import (
     hyprland_runtime_dir,
-    hyprland_config_dir,
     is_sway_installed,
     sway_config_dir,
     is_niri_installed,
@@ -185,23 +185,14 @@ class HyprlandIPC:
     def apply_profile(
         self, profile: Profile, *, update_sddm: bool = True,
         update_greetd: bool = True, use_description: bool = False,
+        hypr_config_format: str | None = None,
     ) -> None:
         """Write monitor config and reload Hyprland."""
-        conf_dir = hyprland_config_dir()
-        monitors_conf = conf_dir / "monitors.conf"
-        monitors_lua = conf_dir / "monitors.lua"
-
-        # Backup existing
-        backup_file(monitors_conf)
-        backup_file(monitors_lua)
-
-        # Write both legacy hyprlang and Hyprland >= 0.55 Lua configs.
-        write_text(monitors_conf, profile.generate_config(
+        # Write the legacy hyprlang and/or Lua configs, per user setting.
+        write_hyprland_configs(
+            profile, fmt=hypr_config_format,
             use_description=use_description, use_v2=self.supports_v2,
-        ))
-        write_text(monitors_lua, profile.generate_lua_config(
-            use_description=use_description,
-        ))
+        )
 
         # Also write Sway config if Sway is installed
         if is_sway_installed():

@@ -249,12 +249,18 @@ All configuration is stored in `~/.config/monique/`:
 ```
 
 Monitor config files are written to the compositor's config directory:
-- **Hyprland:** `~/.config/hypr/monitors.conf` and `~/.config/hypr/monitors.lua`
+- **Hyprland:** `~/.config/hypr/monitors.conf` and/or `~/.config/hypr/monitors.lua`
 - **Sway:** `~/.config/sway/monitors.conf`
 - **Niri:** `~/.config/niri/monitors.kdl`
 
 For Hyprland's legacy hyprlang config, add `source = ~/.config/hypr/monitors.conf` to `hyprland.conf`.
 For Hyprland 0.55+ Lua config, add `require("monitors")` to `hyprland.lua`.
+
+By default Monique writes both Hyprland formats so either config style keeps working.
+If you only use one, pick it in **Preferences → Hyprland Config Format** (`legacy`, `lua`,
+or `both`, stored as `hypr_config_format` in `settings.json`). Switching away from a format
+leaves the previously generated file on disk: delete it, or drop its `source`/`require`
+line from your Hyprland config, otherwise Hyprland keeps applying the stale layout.
 
 To use a custom output directory, set it in **Preferences → Config Output** or pass `--config-dir` on the command line.
 

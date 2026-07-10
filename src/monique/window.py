@@ -12,14 +12,19 @@ from .properties_panel import PropertiesPanel
 from .workspace_panel import WorkspacePanel
 from .profile_manager import ProfileManager
 from .models import MonitorConfig, Profile, WorkspaceRule
+from .hypr_config import hyprland_config_paths
 from .hyprland import HyprlandIPC
 from .niri import NiriIPC
 from .sway import SwayIPC
 from .utils import (
-    hyprland_config_dir,
+    HYPR_FORMAT_BOTH,
+    HYPR_FORMAT_LEGACY,
+    HYPR_FORMAT_LUA,
     niri_config_dir,
+    normalize_hypr_format,
     backup_file,
     restore_backup,
+    is_hyprland_installed,
     is_sddm_running,
     is_greetd_running,
     load_app_settings,
@@ -31,6 +36,14 @@ import os
 from pathlib import Path
 import time
 from typing import Callable
+
+
+# Voci del selettore formato config Hyprland, nell'ordine mostrato in preferenze
+_HYPR_FORMAT_CHOICES: tuple[tuple[str, str], ...] = (
+    (HYPR_FORMAT_BOTH, "Both (legacy + Lua)"),
+    (HYPR_FORMAT_LEGACY, "Legacy only (monitors.conf)"),
+    (HYPR_FORMAT_LUA, "Lua only (monitors.lua)"),
+)
 
 
 def _detect_ipc() -> HyprlandIPC | NiriIPC | SwayIPC:
@@ -382,6 +395,29 @@ class MainWindow(Adw.ApplicationWindow):
         entry_config_dir.connect("changed", self._on_config_dir_changed)
         grp_out.add(entry_config_dir)
 
+        # ── Hyprland config format group ──
+        if is_hyprland_installed():
+            grp_hypr = Adw.PreferencesGroup(
+                title="Hyprland Config Format",
+                description="Which monitor config files are generated for Hyprland",
+            )
+            page.add(grp_hypr)
+
+            combo_fmt = Adw.ComboRow(
+                title="Config format",
+                subtitle="Lua requires Hyprland 0.55 or later",
+                icon_name="text-x-generic-symbolic",
+            )
+            combo_fmt.set_model(Gtk.StringList.new(
+                [label for _, label in _HYPR_FORMAT_CHOICES]
+            ))
+            current_fmt = normalize_hypr_format(self._app_settings.get("hypr_config_format"))
+            combo_fmt.set_selected(
+                [value for value, _ in _HYPR_FORMAT_CHOICES].index(current_fmt)
+            )
+            combo_fmt.connect("notify::selected", self._on_hypr_format_changed)
+            grp_hypr.add(combo_fmt)
+
         # ── Display Manager group ──
         grp_dm = Adw.PreferencesGroup(
             title="Display Manager",
@@ -466,6 +502,16 @@ class MainWindow(Adw.ApplicationWindow):
             action.set_state(GLib.Variant.new_boolean(new_val))
         state = "enabled" if new_val else "disabled"
         self._toast(f"SDDM Xsetup update {state}")
+
+    def _on_hypr_format_changed(self, row: Adw.ComboRow, pspec) -> None:
+        """Handle the Hyprland config format selection in preferences."""
+        index = row.get_selected()
+        if index >= len(_HYPR_FORMAT_CHOICES):
+            return
+        value, label = _HYPR_FORMAT_CHOICES[index]
+        self._app_settings["hypr_config_format"] = value
+        save_app_settings(self._app_settings)
+        self._toast(f"Hyprland config format: {label}")
 
     def _on_greetd_switch_changed(self, row: Adw.SwitchRow, pspec) -> None:
         """Handle the greetd switch toggle in preferences."""
@@ -612,19 +658,28 @@ class MainWindow(Adw.ApplicationWindow):
     # ── Data Loading ─────────────────────────────────────────────────
 
     def _load_workspace_rules_from_conf(self) -> list[WorkspaceRule]:
-        """Read workspace rules from the monitors.conf file we wrote."""
+        """Read workspace rules from the Hyprland monitor config we wrote."""
         # Niri doesn't support Hyprland-style workspace rules
         if isinstance(self._ipc, NiriIPC):
             return []
-        conf = hyprland_config_dir() / "monitors.conf"
-        if not conf.exists():
-            return []
-        rules: list[WorkspaceRule] = []
-        for line in conf.read_text(encoding="utf-8").splitlines():
-            rule = WorkspaceRule.from_hyprland_line(line)
-            if rule:
-                rules.append(rule)
-        return rules
+
+        # The legacy config is only written for the "legacy"/"both" formats,
+        # so fall back to the Lua one when it is the only file we generated.
+        for conf in hyprland_config_paths():
+            if not conf.exists():
+                continue
+            parse = (
+                WorkspaceRule.from_hyprland_lua_line
+                if conf.suffix == ".lua"
+                else WorkspaceRule.from_hyprland_line
+            )
+            rules = [
+                rule
+                for line in conf.read_text(encoding="utf-8").splitlines()
+                if (rule := parse(line))
+            ]
+            return rules
+        return []
 
     def _load_current_state(self, *, select_profile: bool = False) -> None:
         """Query compositor for current monitor state."""
@@ -1017,13 +1072,11 @@ class MainWindow(Adw.ApplicationWindow):
         )
 
         # Determine config path based on compositor
+        hypr_fmt = normalize_hypr_format(self._app_settings.get("hypr_config_format"))
         if isinstance(self._ipc, NiriIPC):
             config_paths = [niri_config_dir() / "monitors.kdl"]
         else:
-            config_paths = [
-                hyprland_config_dir() / "monitors.conf",
-                hyprland_config_dir() / "monitors.lua",
-            ]
+            config_paths = hyprland_config_paths(hypr_fmt)
 
         # Snapshot workspaces (for revert)
         self._ws_snapshot = self._ipc.get_workspaces()
@@ -1041,7 +1094,7 @@ class MainWindow(Adw.ApplicationWindow):
             use_desc = not self._app_settings.get("use_port_names", False)
             self._ipc.apply_profile(
                 profile, update_sddm=update_sddm, update_greetd=update_greetd,
-                use_description=use_desc,
+                use_description=use_desc, hypr_config_format=hypr_fmt,
             )
             self._set_status("Configuration applied")
         except Exception as e:
