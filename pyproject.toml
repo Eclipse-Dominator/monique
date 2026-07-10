@@ -15,6 +15,7 @@ dependencies = [
 
 [project.optional-dependencies]
 udev = ["pyudev>=0.24"]
+test = ["pytest>=7.0"]
 
 [project.scripts]
 monique = "monique.app:main"
@@ -22,3 +23,9 @@ moniqued = "monique.daemon:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Import from the source tree: the tested modules pull in no GTK, so the suite
+# runs without PyGObject and its system libraries.
+pythonpath = ["src"]

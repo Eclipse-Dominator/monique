@@ -1,0 +1,132 @@
+"""The config files apply_profile() writes must be exactly the ones it declares.
+
+The GUI backs up config_paths() before applying and restores them on revert.
+When the two lists drift apart the revert silently does nothing, which is how
+the Sway revert stayed broken: the window assumed the Hyprland paths.
+"""
+
+import itertools
+
+import pytest
+
+from monique import utils
+from monique.config_paths import (
+    HYPRLAND,
+    NIRI,
+    SWAY,
+    compositor_config_paths,
+    niri_monitors_path,
+    sway_monitors_path,
+)
+from monique.hyprland import HyprlandIPC
+from monique.niri import NiriIPC
+from monique.sway import SwayIPC
+
+
+IPC_FOR = {HYPRLAND: HyprlandIPC, SWAY: SwayIPC, NIRI: NiriIPC}
+
+# config.kdl is the user's own Niri config, patched once with an `include`
+# line. Monique does not generate it and must not revert it.
+NOT_GENERATED = {"config.kdl"}
+
+
+def _set_installed(monkeypatch, primary, *, hyprland, sway, niri):
+    """Fake which compositors are installed, wherever the check is imported."""
+    flags = {"hyprland": hyprland, "sway": sway, "niri": niri}
+    for module in ("monique.config_paths", f"monique.{primary}"):
+        for name, value in flags.items():
+            target = f"is_{name}_installed"
+            mod = __import__(module, fromlist=[target])
+            if hasattr(mod, target):
+                monkeypatch.setattr(f"{module}.{target}", lambda v=value: v)
+
+
+def _neutralise_side_effects(monkeypatch, primary):
+    """Stub out the socket reload and the privileged pkexec writes."""
+    for name in ("is_sddm_running", "is_greetd_running"):
+        monkeypatch.setattr(f"monique.{primary}.{name}", lambda: False)
+    monkeypatch.setattr(IPC_FOR[primary], "reload", lambda self: None)
+    if primary == HYPRLAND:
+        monkeypatch.setattr(HyprlandIPC, "get_version", lambda self: (0, 55, 0))
+
+
+def _files_on_disk(root):
+    return {
+        p
+        for sub in ("hypr", "sway", "niri")
+        if (root / sub).is_dir()
+        for p in (root / sub).iterdir()
+        if p.name not in NOT_GENERATED and p.suffix != ".bak"
+    }
+
+
+def _installation_matrix(primary):
+    """Every combination of installed compositors; the active one is present."""
+    for hyprland, sway, niri in itertools.product([True, False], repeat=3):
+        installed = {HYPRLAND: hyprland, SWAY: sway, NIRI: niri}
+        if not installed[primary]:
+            continue
+        yield hyprland, sway, niri
+
+
+@pytest.mark.parametrize("primary", [HYPRLAND, SWAY, NIRI])
+@pytest.mark.parametrize("fmt", ["both", "legacy", "lua"])
+def test_declared_paths_are_exactly_the_files_written(
+    isolated_config, monkeypatch, profile, primary, fmt,
+):
+    for hyprland, sway, niri in _installation_matrix(primary):
+        _set_installed(monkeypatch, primary, hyprland=hyprland, sway=sway, niri=niri)
+        _neutralise_side_effects(monkeypatch, primary)
+
+        for existing in _files_on_disk(isolated_config):
+            existing.unlink()
+
+        ipc = IPC_FOR[primary]()
+        declared = set(ipc.config_paths(hypr_config_format=fmt))
+        ipc.apply_profile(profile, hypr_config_format=fmt, use_description=False)
+
+        assert declared == _files_on_disk(isolated_config), (
+            f"{primary} hyprland={hyprland} sway={sway} niri={niri} fmt={fmt}"
+        )
+
+
+@pytest.mark.parametrize("primary,expected", [
+    (SWAY, "monitors.conf"),
+    (NIRI, "monitors.kdl"),
+])
+def test_primary_compositor_config_comes_first(monkeypatch, primary, expected):
+    _set_installed(monkeypatch, primary, hyprland=True, sway=True, niri=True)
+
+    assert compositor_config_paths(primary)[0].name == expected
+
+
+def test_cross_writes_are_included(monkeypatch):
+    _set_installed(monkeypatch, SWAY, hyprland=True, sway=True, niri=True)
+
+    paths = compositor_config_paths(SWAY, hypr_config_format="lua")
+
+    assert sway_monitors_path() in paths
+    assert niri_monitors_path() in paths
+    assert any(p.name == "monitors.lua" for p in paths)
+    assert not any(p.name == "monitors.conf" and "hypr" in p.parts for p in paths)
+
+
+def test_absent_compositors_are_not_declared(monkeypatch):
+    _set_installed(monkeypatch, SWAY, hyprland=False, sway=True, niri=False)
+
+    assert compositor_config_paths(SWAY) == [sway_monitors_path()]
+
+
+def test_shared_config_dir_yields_no_duplicates(monkeypatch):
+    """--config-dir makes Hyprland and Sway share one monitors.conf."""
+    _set_installed(monkeypatch, SWAY, hyprland=True, sway=True, niri=True)
+    monkeypatch.setattr(utils, "_runtime_config_dir", "/tmp/monique-shared")
+
+    paths = compositor_config_paths(SWAY, hypr_config_format="legacy")
+
+    assert len(paths) == len(set(paths))
+
+
+def test_unknown_compositor_is_rejected():
+    with pytest.raises(ValueError, match="wayfire"):
+        compositor_config_paths("wayfire")
