@@ -11,10 +11,10 @@ from .canvas import MonitorCanvas
 from .properties_panel import PropertiesPanel
 from .workspace_panel import WorkspacePanel
 from .profile_manager import ProfileManager
-from .models import MonitorConfig, Profile, WorkspaceRule
-from .hypr_config import hyprland_config_paths, read_icc_profiles
+from .models import MonitorConfig, Profile, WorkspaceRule, monitor_matches_identifier
+from .hypr_config import hyprland_config_paths, read_default_monitor, read_icc_profiles
 from .hyprland import HyprlandIPC
-from .niri import NiriIPC
+from .niri import NiriIPC, read_focus_at_startup
 from .sway import SwayIPC
 from .utils import (
     HYPR_FORMAT_BOTH,
@@ -687,6 +687,7 @@ class MainWindow(Adw.ApplicationWindow):
             self._monitors = self._ipc.get_monitors()
             self._place_disabled(self._monitors)
             self._restore_icc_profiles(self._monitors)
+            self._restore_default_monitor(self._monitors)
             self._workspace_rules = self._load_workspace_rules_from_conf()
             self._canvas.monitors = self._monitors
             if self._monitors:
@@ -725,6 +726,20 @@ class MainWindow(Adw.ApplicationWindow):
                 continue
             by_desc = profiles.get(f"desc:{m.description}", "") if m.description else ""
             m.icc_profile = by_desc or profiles.get(m.name, "")
+
+    def _restore_default_monitor(self, monitors: list[MonitorConfig]) -> None:
+        """Refill the startup-focus flag, which neither compositor reports over IPC."""
+        if isinstance(self._ipc, HyprlandIPC):
+            identifiers = [read_default_monitor()]
+        elif isinstance(self._ipc, NiriIPC):
+            identifiers = read_focus_at_startup()
+        else:
+            return
+
+        for m in monitors:
+            m.focus_at_startup = any(
+                monitor_matches_identifier(m, i) for i in identifiers
+            )
 
     @staticmethod
     def _place_disabled(monitors: list[MonitorConfig]) -> None:
@@ -1050,8 +1065,26 @@ class MainWindow(Adw.ApplicationWindow):
         self._update_properties_for_selected()
 
     def _on_property_changed(self, panel: PropertiesPanel) -> None:
+        self._enforce_single_default_monitor()
         self._mark_dirty()
         self._canvas.queue_draw()
+
+    def _enforce_single_default_monitor(self) -> None:
+        """Keep the startup-focus flag on one monitor only.
+
+        Hyprland accetta un solo nome in ``cursor:default_monitor``, quindi il
+        flag si comporta come un radio button anche se Niri ne tollererebbe più
+        di uno.
+        """
+        idx = self._canvas.selected_index
+        if not (0 <= idx < len(self._monitors)):
+            return
+        if not self._monitors[idx].focus_at_startup:
+            return
+
+        for i, m in enumerate(self._monitors):
+            if i != idx:
+                m.focus_at_startup = False
 
     # ── Workspace Dialog ─────────────────────────────────────────────
 

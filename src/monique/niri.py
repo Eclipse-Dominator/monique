@@ -9,9 +9,9 @@ import socket
 from pathlib import Path
 from typing import AsyncIterator
 
-from .config_paths import NIRI, compositor_config_paths
+from .config_paths import NIRI, compositor_config_paths, niri_monitors_path
 from .hypr_config import write_hyprland_configs
-from .models import MonitorConfig, Profile
+from .models import MonitorConfig, Profile, focus_at_startup_from_niri
 from .utils import (
     niri_config_dir,
     is_hyprland_installed,
@@ -24,6 +24,18 @@ from .utils import (
     write_text,
     backup_file,
 )
+
+
+def read_focus_at_startup() -> list[str]:
+    """Return the identifiers marked ``focus-at-startup`` in the config we wrote.
+
+    L'IPC di Niri non riporta il flag (è solo di configurazione), quindi
+    ``monitors.kdl`` è l'unica fonte per ricostruirlo dopo un reload.
+    """
+    conf = niri_monitors_path()
+    if not conf.exists():
+        return []
+    return focus_at_startup_from_niri(conf.read_text(encoding="utf-8"))
 
 
 def _ensure_niri_config_include() -> bool:

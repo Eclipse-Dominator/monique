@@ -11,6 +11,8 @@ from pathlib import Path
 
 from .models import (
     Profile,
+    default_monitor_from_hyprland,
+    default_monitor_from_hyprland_lua,
     icc_profiles_from_hyprland,
     icc_profiles_from_hyprland_lua,
 )
@@ -99,3 +101,24 @@ def read_icc_profiles(fmt: str | None = None) -> dict[str, str]:
         profiles.update(parse(conf.read_text(encoding="utf-8")))
 
     return profiles
+
+
+def read_default_monitor(fmt: str | None = None) -> str:
+    """Return the identifier of the monitor focused at startup, empty when unset.
+
+    Come per l'ICC, ``hyprctl`` non riporta ``cursor:default_monitor``: il config
+    che generiamo è l'unica fonte per ricostruire il flag dopo un reload.
+    """
+    for conf in hyprland_config_paths(fmt):
+        if not conf.exists():
+            continue
+        parse = (
+            default_monitor_from_hyprland_lua
+            if conf.suffix == ".lua"
+            else default_monitor_from_hyprland
+        )
+        identifier = parse(conf.read_text(encoding="utf-8"))
+        if identifier:
+            return identifier
+
+    return ""

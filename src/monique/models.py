@@ -117,6 +117,21 @@ def _unlua_string(literal: str) -> str:
     return "".join(out)
 
 
+def normalize_description(description: str) -> str:
+    """Strip compositor-specific noise so descriptions match across IPCs.
+
+    Hyprland appende "Unknown" quando manca il seriale (Sway e Niri lo omettono)
+    e Niri avvolge alcuni vendor in ``PNP(…)``.
+    """
+    if description.endswith(" Unknown"):
+        description = description[:-8]
+    if description.startswith("PNP("):
+        paren = description.find(") ")
+        if paren != -1:
+            description = description[4:paren] + description[paren + 1:]
+    return description
+
+
 # Coppie ``chiave = valore`` di una tabella Lua; il valore è una stringa
 # quotata (con escape) oppure un literal senza virgole/spazi.
 _LUA_FIELD_RE = re.compile(r'(\w+)\s*=\s*("(?:[^"\\]|\\.)*"|[^,}\s]+)')
@@ -189,16 +204,12 @@ class MonitorConfig:
     # Enabled
     enabled: bool = True
 
+    # Monitor focused at startup: `focus-at-startup` su Niri,
+    # `cursor:default_monitor` su Hyprland.  Sway non ha un equivalente.
+    focus_at_startup: bool = False
+
     def __post_init__(self) -> None:
-        # Normalize description so fingerprints match across compositors.
-        # Hyprland appends "Unknown" for missing serials, Sway/Niri omit it.
-        if self.description.endswith(" Unknown"):
-            self.description = self.description[:-8]
-        # Niri wraps some vendor names in PNP(…); strip for cross-compositor matching.
-        if self.description.startswith("PNP("):
-            paren = self.description.find(") ")
-            if paren != -1:
-                self.description = self.description[4:paren] + self.description[paren + 1:]
+        self.description = normalize_description(self.description)
 
     @property
     def logical_width(self) -> float:
@@ -369,6 +380,10 @@ class MonitorConfig:
         # VRR
         if self.vrr != VRR.OFF:
             lines.append("    variable-refresh-rate")
+
+        # Monitor focalizzato all'avvio (Niri >= 25.05)
+        if self.focus_at_startup:
+            lines.append("    focus-at-startup")
 
         body = "\n".join(lines)
         return f"output {identifier} {{\n{body}\n}}"
@@ -1319,12 +1334,30 @@ class Profile:
                     use_description=use_description,
                     name_to_id=name_to_id,
                 ))
+        default_id = self.default_monitor_id(use_description)
+        if default_id:
+            lines.append(f"cursor:default_monitor = {default_id}")
+
         if self.workspace_rules:
             lines.append("")
             for w in self.workspace_rules:
                 lines.append(w.to_hyprland_line(name_to_id=name_to_id))
         lines.append("")
         return "\n".join(lines)
+
+    def default_monitor_id(self, use_description: bool = False) -> str:
+        """Identifier of the monitor focused at startup, empty when there is none.
+
+        Hyprland accetta un solo nome in ``cursor:default_monitor``: se più di un
+        monitor risultasse marcato, vince il primo del profilo.
+        """
+        for m in self.monitors:
+            if not (m.enabled and m.focus_at_startup):
+                continue
+            if use_description and m.description:
+                return f"desc:{m.description}"
+            return m.name
+        return ""
 
     def generate_lua_config(
         self,
@@ -1346,6 +1379,16 @@ class Profile:
                 name_to_id=name_to_id,
                 supports_icc=supports_icc,
             ))
+
+        # hl.config() mappa cursor:default_monitor su cursor.default_monitor
+        default_id = self.default_monitor_id(use_description)
+        if default_id:
+            blocks.append(
+                "hl.config({\n"
+                f"  cursor = {{ default_monitor = {_lua_string(default_id)} }},\n"
+                "})"
+            )
+
         if self.workspace_rules:
             blocks.append("\n".join(
                 w.to_hyprland_lua_line(name_to_id=name_to_id)
@@ -1553,3 +1596,47 @@ def icc_profiles_from_hyprland_lua(text: str) -> dict[str, str]:
             profiles[_unlua_string(output)] = _unlua_string(icc)
 
     return profiles
+
+
+# ── Rilettura del monitor di default dai config generati ─────────────────
+# Né hyprctl né l'IPC di Niri riportano il flag: è solo di configurazione.
+
+_HYPR_DEFAULT_MONITOR_RE = re.compile(r"^\s*cursor:default_monitor\s*=\s*(\S.*?)\s*$", re.M)
+_LUA_DEFAULT_MONITOR_RE = re.compile(r'default_monitor\s*=\s*("(?:[^"\\]|\\.)*")')
+_KDL_OUTPUT_RE = re.compile(r'output\s+"([^"]+)"\s*\{(.*?)\n\}', re.DOTALL)
+
+
+def default_monitor_from_hyprland(text: str) -> str:
+    """Return the ``cursor:default_monitor`` identifier, empty when unset."""
+    match = _HYPR_DEFAULT_MONITOR_RE.search(text)
+    return match.group(1) if match else ""
+
+
+def default_monitor_from_hyprland_lua(text: str) -> str:
+    """Return the ``cursor.default_monitor`` identifier set via ``hl.config()``."""
+    match = _LUA_DEFAULT_MONITOR_RE.search(text)
+    return _unlua_string(match.group(1)) if match else ""
+
+
+def focus_at_startup_from_niri(text: str) -> list[str]:
+    """Return the identifiers of the ``output`` blocks carrying focus-at-startup."""
+    return [
+        identifier
+        for identifier, body in _KDL_OUTPUT_RE.findall(text)
+        if any(line.strip() == "focus-at-startup" for line in body.splitlines())
+    ]
+
+
+def monitor_matches_identifier(monitor: MonitorConfig, identifier: str) -> bool:
+    """True when *identifier*, as written in a config file, refers to *monitor*.
+
+    Gli identificatori sono ``desc:DESCRIZIONE`` (Hyprland), la descrizione nuda
+    nella forma nativa del compositore (Niri) oppure il nome della porta.
+    """
+    if not identifier:
+        return False
+    if identifier == monitor.name:
+        return True
+
+    desc = identifier[5:].strip() if identifier.startswith("desc:") else identifier
+    return bool(monitor.description) and normalize_description(desc) == monitor.description

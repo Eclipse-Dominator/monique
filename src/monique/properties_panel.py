@@ -90,6 +90,14 @@ class PropertiesPanel(Adw.PreferencesPage):
         grp_info.add(self._sw_enabled)
         self._enabled_locked = False
 
+        self._sw_default = Adw.SwitchRow(
+            title="Default Monitor",
+            subtitle="Focused at startup (Niri and Hyprland only)",
+            icon_name="starred-symbolic",
+        )
+        self._sw_default.connect("notify::active", self._on_changed)
+        grp_info.add(self._sw_default)
+
         # ── Resolution ───────────────────────────────────────────────
         grp_res = Adw.PreferencesGroup(title="Resolution")
         self.add(grp_res)
@@ -331,6 +339,9 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._spin_sdr_bright.set_sensitive(is_hyprland)
         self._spin_sdr_sat.set_sensitive(is_hyprland)
 
+        # Default monitor: Sway has no equivalent option
+        self._sw_default.set_sensitive(backend in ("hyprland", "niri"))
+
         # Reserved Area: Hyprland only
         self._grp_reserved.set_sensitive(is_hyprland)
 
@@ -463,6 +474,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         vrr_model = self._combo_vrr.get_model()
         vrr_idx = min(monitor.vrr.value, vrr_model.get_n_items() - 1) if vrr_model else 0
         self._combo_vrr.set_selected(vrr_idx)
+        self._sw_default.set_active(monitor.focus_at_startup)
 
         cm_options = ["None", "auto", "srgb", "dcip3", "dp3", "adobe", "wide", "edid", "hdr", "hdredid"]
         cm_val = monitor.color_management or "None"
@@ -536,6 +548,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         # Advanced
         m.bitdepth = 10 if self._combo_bitdepth.get_selected() == 1 else 8
         m.vrr = VRR(self._combo_vrr.get_selected())
+        m.focus_at_startup = self._sw_default.get_active()
 
         cm_options = ["", "auto", "srgb", "dcip3", "dp3", "adobe", "wide", "edid", "hdr", "hdredid"]
         m.color_management = cm_options[self._combo_cm.get_selected()]
