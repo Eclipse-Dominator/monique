@@ -368,7 +368,7 @@ class PropertiesPanel(Adw.PreferencesPage):
 
         # HDR / EDID Override: only for Hyprland >= 0.50
         self._grp_hdr.set_sensitive(is_hyprland and hyprland_v2)
-        self._update_icc_validation()
+        self._sync_icc_ui()
 
     def set_enabled_locked(self, locked: bool) -> None:
         """Lock the Enabled switch (e.g. for clamshell-managed monitors)."""
@@ -491,7 +491,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._spin_max_avg_lum.set_value(monitor.max_avg_luminance)
 
         self._building = False
-        self._update_icc_validation()
+        self._sync_icc_ui()
 
     def _apply_to_monitor(self) -> None:
         """Write current UI values back to the MonitorConfig."""
@@ -578,9 +578,13 @@ class PropertiesPanel(Adw.PreferencesPage):
     def _on_changed(self, *args) -> None:
         if self._building or self._monitor is None:
             return
-        self._update_icc_validation()
+        self._sync_icc_ui()
         self._apply_to_monitor()
         self.emit("property-changed")
+
+    def _sync_icc_ui(self) -> None:
+        self._update_icc_validation()
+        self._update_icc_dependents()
 
     def _update_icc_validation(self) -> None:
         icc_profile = self._entry_icc.get_text().strip()
@@ -596,6 +600,23 @@ class PropertiesPanel(Adw.PreferencesPage):
 
         self._entry_icc.add_css_class("error")
         self._entry_icc.set_tooltip_text("ICC profile path must be absolute")
+
+    def _update_icc_dependents(self) -> None:
+        """Disable the controls Hyprland ignores while an ICC profile is set.
+
+        ``CMonitor::applyMonitorRule`` applica cm, sdrbrightness e sdrsaturation
+        solo quando non c'è un profilo ICC: tenerli attivi illuderebbe l'utente.
+        """
+        icc_active = (
+            self._backend == "hyprland"
+            and self._hyprland_icc
+            and bool(self._entry_icc.get_text().strip())
+        )
+        sensitive = self._backend == "hyprland" and not icc_active
+
+        self._combo_cm.set_sensitive(sensitive)
+        self._spin_sdr_bright.set_sensitive(sensitive)
+        self._spin_sdr_sat.set_sensitive(sensitive)
 
     def _on_res_mode_changed(self, *args) -> None:
         if self._building:
@@ -640,45 +661,39 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._on_changed()
 
     def _on_pick_icc_clicked(self, *args) -> None:
-        chooser = Gtk.FileChooserNative.new(
-            "Choose ICC Profile",
-            self.get_root(),
-            Gtk.FileChooserAction.OPEN,
-            "Open",
-            "Cancel",
-        )
-
         filter_icc = Gtk.FileFilter()
         filter_icc.set_name("ICC profiles")
-        filter_icc.add_pattern("*.icc")
-        filter_icc.add_pattern("*.icm")
-        filter_icc.add_pattern("*.ICC")
-        filter_icc.add_pattern("*.ICM")
-        chooser.add_filter(filter_icc)
+        for pattern in ("*.icc", "*.icm", "*.ICC", "*.ICM"):
+            filter_icc.add_pattern(pattern)
 
         filter_all = Gtk.FileFilter()
         filter_all.set_name("All files")
         filter_all.add_pattern("*")
-        chooser.add_filter(filter_all)
-        chooser.set_filter(filter_icc)
+
+        filters = Gio.ListStore.new(Gtk.FileFilter)
+        filters.append(filter_icc)
+        filters.append(filter_all)
+
+        dialog = Gtk.FileDialog(title="Choose ICC Profile")
+        dialog.set_filters(filters)
+        dialog.set_default_filter(filter_icc)
 
         current_path = self._entry_icc.get_text().strip()
         if current_path:
             current_file = Gio.File.new_for_path(current_path)
             if current_file.query_exists(None):
-                chooser.set_file(current_file)
+                dialog.set_initial_file(current_file)
 
-        chooser.connect("response", self._on_icc_file_response)
-        chooser.show()
+        dialog.open(self.get_root(), None, self._on_icc_file_chosen)
 
-    def _on_icc_file_response(self, chooser: Gtk.FileChooserNative, response: int) -> None:
-        if response == Gtk.ResponseType.ACCEPT:
-            file = chooser.get_file()
-            if file is not None:
-                path = file.get_path()
-                if path:
-                    self._entry_icc.set_text(path)
-        chooser.destroy()
+    def _on_icc_file_chosen(self, dialog: Gtk.FileDialog, result: Gio.AsyncResult) -> None:
+        try:
+            file = dialog.open_finish(result)
+        except GLib.Error:
+            return  # dialogo annullato
+
+        if file is not None and (path := file.get_path()):
+            self._entry_icc.set_text(path)
 
     @staticmethod
     def _find_combo_index(combo: Adw.ComboRow, value: str) -> int:
