@@ -121,6 +121,10 @@ def _unlua_string(literal: str) -> str:
 # quotata (con escape) oppure un literal senza virgole/spazi.
 _LUA_FIELD_RE = re.compile(r'(\w+)\s*=\s*("(?:[^"\\]|\\.)*"|[^,}\s]+)')
 
+# Corpo di un blocco ``hl.monitor({ … })``: la tabella annidata reserved_area
+# chiude con ``},`` e non con ``})``, quindi il match non greedy non la tronca.
+_LUA_MONITOR_RE = re.compile(r"hl\.monitor\(\{(.*?)\}\)", re.DOTALL)
+
 
 # ── MonitorConfig ────────────────────────────────────────────────────────
 
@@ -582,6 +586,7 @@ class MonitorConfig:
         self,
         use_description: bool = False,
         name_to_id: dict[str, str] | None = None,
+        supports_icc: bool = False,
     ) -> str:
         """Generate an ``hl.monitor({ ... })`` block for Hyprland >= 0.55."""
         lines: list[str] = ["hl.monitor({"]
@@ -629,7 +634,8 @@ class MonitorConfig:
         if self.vrr != VRR.OFF:
             lines.append(_lua_field("vrr", self.vrr.value))
 
-        if self.icc_profile:
+        # ICC overrides CM presets on newer Hyprland versions.
+        if supports_icc and self.icc_profile:
             lines.append(_lua_field("icc", self.icc_profile))
         else:
             cm = self.color_management or ("hdr" if self.hdr else "")
@@ -740,7 +746,9 @@ class MonitorConfig:
             enabled=not disabled,
             vrr=vrr_val,
             color_management=data.get("colorManagementPreset", ""),
-            icc_profile=data.get("iccProfile", data.get("icc", "")),
+            # hyprctl non riporta il profilo ICC: le chiavi sono lette per
+            # compatibilità futura, il valore reale arriva da icc_profiles_from_*().
+            icc_profile=data.get("iccProfile") or data.get("icc") or "",
             sdr_brightness=data.get("sdrBrightness", 1.0),
             sdr_saturation=data.get("sdrSaturation", 1.0),
             sdr_min_luminance=data.get("sdrMinLuminance", 0.0),
@@ -1318,7 +1326,11 @@ class Profile:
         lines.append("")
         return "\n".join(lines)
 
-    def generate_lua_config(self, use_description: bool = False) -> str:
+    def generate_lua_config(
+        self,
+        use_description: bool = False,
+        supports_icc: bool = False,
+    ) -> str:
         """Generate the full monitors.lua content for Hyprland >= 0.55."""
         name_to_id: dict[str, str] = {}
         for m in self.monitors:
@@ -1332,6 +1344,7 @@ class Profile:
             blocks.append(m.to_hyprland_lua_block(
                 use_description=use_description,
                 name_to_id=name_to_id,
+                supports_icc=supports_icc,
             ))
         if self.workspace_rules:
             blocks.append("\n".join(
@@ -1476,3 +1489,55 @@ def undo_clamshell(monitors: list[MonitorConfig]) -> bool:
             m.enabled = True
             changed = True
     return changed
+
+
+# ── Rilettura dell'ICC dai config generati ───────────────────────────────
+# ``hyprctl monitors -j`` non espone il profilo ICC di un monitor, quindi
+# l'unica fonte da cui recuperarlo dopo un reload è il config scritto da noi.
+# Le chiavi sono gli identificatori di output usati nel file: il nome della
+# porta oppure ``desc:DESCRIZIONE``.
+
+
+def icc_profiles_from_hyprland(text: str) -> dict[str, str]:
+    """Map each ``monitorv2`` output identifier to its ICC profile path."""
+    profiles: dict[str, str] = {}
+    output = ""
+    icc = ""
+    in_block = False
+
+    for raw in text.splitlines():
+        line = raw.strip()
+        if line.startswith("monitorv2"):
+            in_block, output, icc = True, "", ""
+            continue
+        if not in_block:
+            continue
+        if line.startswith("}"):
+            if output and icc:
+                profiles[output] = icc
+            in_block = False
+            continue
+
+        key, sep, value = line.partition("=")
+        if not sep:
+            continue
+        if key.strip() == "output":
+            output = value.strip()
+        elif key.strip() == "icc":
+            icc = value.strip()
+
+    return profiles
+
+
+def icc_profiles_from_hyprland_lua(text: str) -> dict[str, str]:
+    """Map each ``hl.monitor({ … })`` output identifier to its ICC profile path."""
+    profiles: dict[str, str] = {}
+
+    for body in _LUA_MONITOR_RE.findall(text):
+        fields = dict(_LUA_FIELD_RE.findall(body))
+        output = fields.get("output")
+        icc = fields.get("icc")
+        if output and icc:
+            profiles[_unlua_string(output)] = _unlua_string(icc)
+
+    return profiles

@@ -12,7 +12,7 @@ from .properties_panel import PropertiesPanel
 from .workspace_panel import WorkspacePanel
 from .profile_manager import ProfileManager
 from .models import MonitorConfig, Profile, WorkspaceRule
-from .hypr_config import hyprland_config_paths
+from .hypr_config import hyprland_config_paths, read_icc_profiles
 from .hyprland import HyprlandIPC
 from .niri import NiriIPC
 from .sway import SwayIPC
@@ -686,6 +686,7 @@ class MainWindow(Adw.ApplicationWindow):
         try:
             self._monitors = self._ipc.get_monitors()
             self._place_disabled(self._monitors)
+            self._restore_icc_profiles(self._monitors)
             self._workspace_rules = self._load_workspace_rules_from_conf()
             self._canvas.monitors = self._monitors
             if self._monitors:
@@ -704,6 +705,26 @@ class MainWindow(Adw.ApplicationWindow):
         except Exception as e:
             self._set_status(f"Error: {e}")
             self._toast(f"Cannot connect to compositor: {e}")
+
+    def _restore_icc_profiles(self, monitors: list[MonitorConfig]) -> None:
+        """Refill the ICC profiles that hyprctl does not report.
+
+        Come per le workspace rules, l'unica fonte è il config che abbiamo
+        scritto: senza questo passaggio ogni reload azzererebbe il campo e il
+        salvataggio successivo perderebbe il profilo scelto dall'utente.
+        """
+        if not isinstance(self._ipc, HyprlandIPC):
+            return
+
+        profiles = read_icc_profiles()
+        if not profiles:
+            return
+
+        for m in monitors:
+            if m.icc_profile:
+                continue
+            by_desc = profiles.get(f"desc:{m.description}", "") if m.description else ""
+            m.icc_profile = by_desc or profiles.get(m.name, "")
 
     @staticmethod
     def _place_disabled(monitors: list[MonitorConfig]) -> None:

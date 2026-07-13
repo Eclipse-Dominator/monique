@@ -9,7 +9,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .models import Profile
+from .models import (
+    Profile,
+    icc_profiles_from_hyprland,
+    icc_profiles_from_hyprland_lua,
+)
 from .utils import (
     HYPR_FORMAT_BOTH,
     HYPR_FORMAT_LEGACY,
@@ -67,7 +71,31 @@ def write_hyprland_configs(
         backup_file(monitors_lua)
         write_text(monitors_lua, profile.generate_lua_config(
             use_description=use_description,
+            supports_icc=supports_icc,
         ))
         written.append(monitors_lua)
 
     return written
+
+
+def read_icc_profiles(fmt: str | None = None) -> dict[str, str]:
+    """Return the ICC profiles found in the configs we generated.
+
+    ``hyprctl monitors -j`` non riporta il profilo ICC di un monitor, quindi
+    questi file sono l'unica fonte da cui recuperarlo quando ricarichiamo lo
+    stato dal compositor.  Le chiavi sono gli identificatori di output usati
+    nel file: il nome della porta oppure ``desc:DESCRIZIONE``.
+    """
+    profiles: dict[str, str] = {}
+
+    for conf in hyprland_config_paths(fmt):
+        if not conf.exists():
+            continue
+        parse = (
+            icc_profiles_from_hyprland_lua
+            if conf.suffix == ".lua"
+            else icc_profiles_from_hyprland
+        )
+        profiles.update(parse(conf.read_text(encoding="utf-8")))
+
+    return profiles
