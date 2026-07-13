@@ -16,8 +16,14 @@ jobs:
         with:
           script: |
             const OWNER_LOGIN = context.repo.owner;
-            const DAYS = 30;
-            const cutoff = new Date(Date.now() - DAYS * 24 * 60 * 60 * 1000);
+            const STALE_LABEL = "stale";
+            const EXEMPT_LABELS = ["pinned", "keep-open"];
+            const DAYS_TO_STALE = 30;
+            const DAYS_TO_CLOSE = 90;
+
+            const DAY_MS = 24 * 60 * 60 * 1000;
+            const daysSince = (date) => (Date.now() - new Date(date).getTime()) / DAY_MS;
+            const isBot = (user) => user.type === "Bot" || user.login.endsWith("[bot]");
 
             const issues = await github.paginate(github.rest.issues.listForRepo, {
               owner: context.repo.owner,
@@ -28,6 +34,11 @@ jobs:
 
             for (const issue of issues) {
               if (issue.pull_request) continue;
+              // Le issue aperte dal maintainer sono promemoria propri: nessuno deve rispondere.
+              if (issue.user.login === OWNER_LOGIN) continue;
+
+              const labels = issue.labels.map((l) => (typeof l === "string" ? l : l.name));
+              if (labels.some((l) => EXEMPT_LABELS.includes(l))) continue;
 
               const comments = await github.paginate(github.rest.issues.listComments, {
                 owner: context.repo.owner,
@@ -36,26 +47,61 @@ jobs:
                 per_page: 100,
               });
 
-              if (comments.length === 0) continue;
+              // I commenti dei bot (avviso di stale incluso) non contano come risposta:
+              // altrimenti l'avviso stesso azzererebbe il conteggio al giro successivo.
+              const human = comments.filter((c) => !isBot(c.user));
+              if (human.length === 0) continue;
 
-              const last = comments[comments.length - 1];
-              if (last.user.login !== OWNER_LOGIN) continue;
-              if (new Date(last.created_at) > cutoff) continue;
+              const last = human[human.length - 1];
+              const wasStale = labels.includes(STALE_LABEL);
 
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                body: "Closing this issue as there has been no follow-up in 30 days. Feel free to reopen if you have more questions.",
-              });
+              // Qualcuno ha risposto al maintainer: la palla torna a noi.
+              if (last.user.login !== OWNER_LOGIN) {
+                if (wasStale) {
+                  await github.rest.issues.removeLabel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: issue.number,
+                    name: STALE_LABEL,
+                  });
+                  core.info(`Un-staled issue #${issue.number}: someone replied`);
+                }
+                continue;
+              }
 
-              await github.rest.issues.update({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issue.number,
-                state: "closed",
-                state_reason: "not_planned",
-              });
+              const waiting = daysSince(last.created_at);
 
-              core.info(`Closed issue #${issue.number}: ${issue.title}`);
+              if (waiting >= DAYS_TO_CLOSE) {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: `Closing this issue: there has been no follow-up in ${DAYS_TO_CLOSE} days. Feel free to reopen if you have more to add.`,
+                });
+                await github.rest.issues.update({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  state: "closed",
+                  state_reason: "not_planned",
+                });
+                core.info(`Closed issue #${issue.number}: ${issue.title}`);
+                continue;
+              }
+
+              if (waiting >= DAYS_TO_STALE && !wasStale) {
+                await github.rest.issues.addLabels({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  labels: [STALE_LABEL],
+                });
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: issue.number,
+                  body: `Marking this as stale: there has been no follow-up in ${DAYS_TO_STALE} days. It will be closed after ${DAYS_TO_CLOSE} days without a reply. Comment to keep it open.`,
+                });
+                core.info(`Marked issue #${issue.number} as stale`);
+              }
             }
