@@ -1421,43 +1421,55 @@ class Profile:
     def _compute_physical_positions(self) -> dict[str, tuple[int, int]]:
         """Convert logical compositor positions to physical xrandr positions.
 
-        Groups monitors into horizontal rows (by logical y) and places them
-        left-to-right within each row using their physical dimensions.
+        Groups monitors into horizontal rows and places them left-to-right
+        within each row using their physical dimensions, keeping the vertical
+        offset each monitor has inside its row.
         """
         enabled = [m for m in self.monitors if m.enabled]
         if not enabled:
             return {}
 
-        # Group by approximate logical y (within 50px tolerance)
-        rows: list[list[MonitorConfig]] = []
-        for m in sorted(enabled, key=lambda m: (m.y, m.x)):
-            placed = False
-            for row in rows:
-                if abs(m.y - row[0].y) < 50:
-                    row.append(m)
-                    placed = True
-                    break
-            if not placed:
-                rows.append([m])
-
-        # Sort rows by y, monitors within row by x
-        rows.sort(key=lambda row: row[0].y)
-        for row in rows:
-            row.sort(key=lambda m: m.x)
-
         result: dict[str, tuple[int, int]] = {}
         phys_y = 0
-        for row in rows:
+        for row in self._group_into_rows(enabled):
+            row_top = min(m.y for m in row)
             phys_x = 0
             row_height = 0
             for m in row:
-                result[m.name] = (phys_x, phys_y)
+                # L'offset è in pixel logici del monitor, xrandr li vuole fisici.
+                offset_y = round((m.y - row_top) * m.scale)
+                result[m.name] = (phys_x, phys_y + offset_y)
                 pw, ph = m.physical_size_rotated
                 phys_x += pw
-                row_height = max(row_height, ph)
+                row_height = max(row_height, offset_y + ph)
             phys_y += row_height
 
         return result
+
+    @staticmethod
+    def _group_into_rows(monitors: list[MonitorConfig]) -> list[list[MonitorConfig]]:
+        """Group monitors whose logical rectangles overlap vertically.
+
+        Due monitor affiancati ma di altezza diversa hanno y logiche distanti
+        (allineamento al centro o in basso): raggrupparli per vicinanza della y
+        li spezzerebbe in righe diverse e l'Xsetup li impilerebbe (issue #39).
+        """
+        rows: list[list[MonitorConfig]] = []
+
+        for m in sorted(monitors, key=lambda m: (m.x, m.y)):
+            top, bottom = m.y, m.y + m.logical_height
+            for row in rows:
+                if any(top < r.y + r.logical_height and r.y < bottom for r in row):
+                    row.append(m)
+                    break
+            else:
+                rows.append([m])
+
+        rows.sort(key=lambda row: min(m.y for m in row))
+        for row in rows:
+            row.sort(key=lambda m: m.x)
+
+        return rows
 
 
 # ── Clamshell Mode ────────────────────────────────────────────────────
