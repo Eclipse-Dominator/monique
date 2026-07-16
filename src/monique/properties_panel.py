@@ -65,6 +65,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._building = False
         self._backend: str = "hyprland"  # "hyprland", "sway", or "niri"
         self._hyprland_icc: bool = False
+        self._hdr_dependent_rows: list[Gtk.Widget] = []
 
         self._build_ui()
 
@@ -215,6 +216,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._spin_sdr_bright.set_title("SDR Brightness")
         self._spin_sdr_bright.set_digits(2)
         self._spin_sdr_bright.connect("notify::value", self._on_changed)
+        self._hdr_dependent_rows.append(self._spin_sdr_bright)
         self._grp_adv.add(self._spin_sdr_bright)
         _fix_spin_icons(self._spin_sdr_bright)
 
@@ -222,6 +224,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._spin_sdr_sat.set_title("SDR Saturation")
         self._spin_sdr_sat.set_digits(2)
         self._spin_sdr_sat.connect("notify::value", self._on_changed)
+        self._hdr_dependent_rows.append(self._spin_sdr_sat)
         self._grp_adv.add(self._spin_sdr_sat)
         _fix_spin_icons(self._spin_sdr_sat)
 
@@ -267,6 +270,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._combo_sdr_eotf = Adw.ComboRow(title="SDR EOTF")
         self._combo_sdr_eotf.set_model(Gtk.StringList.new(["Global", "sRGB", "Gamma 2.2"]))
         self._combo_sdr_eotf.connect("notify::selected", self._on_changed)
+        self._hdr_dependent_rows.append(self._combo_sdr_eotf)
         self._grp_hdr.add(self._combo_sdr_eotf)
 
         self._combo_supports_hdr = Adw.ComboRow(title="Supports HDR")
@@ -283,6 +287,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._spin_sdr_min_lum.set_title("SDR Min Luminance")
         self._spin_sdr_min_lum.set_digits(3)
         self._spin_sdr_min_lum.connect("notify::value", self._on_changed)
+        self._hdr_dependent_rows.append(self._spin_sdr_min_lum)
         self._grp_hdr.add(self._spin_sdr_min_lum)
         _fix_spin_icons(self._spin_sdr_min_lum)
 
@@ -290,6 +295,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._spin_sdr_max_lum.set_title("SDR Max Luminance")
         self._spin_sdr_max_lum.set_digits(1)
         self._spin_sdr_max_lum.connect("notify::value", self._on_changed)
+        self._hdr_dependent_rows.append(self._spin_sdr_max_lum)
         self._grp_hdr.add(self._spin_sdr_max_lum)
         _fix_spin_icons(self._spin_sdr_max_lum)
 
@@ -297,6 +303,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._spin_min_lum.set_title("Min Luminance")
         self._spin_min_lum.set_digits(1)
         self._spin_min_lum.connect("notify::value", self._on_changed)
+        self._hdr_dependent_rows.append(self._spin_min_lum)
         self._grp_hdr.add(self._spin_min_lum)
         _fix_spin_icons(self._spin_min_lum)
 
@@ -304,6 +311,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._spin_max_lum.set_title("Max Luminance")
         self._spin_max_lum.set_digits(1)
         self._spin_max_lum.connect("notify::value", self._on_changed)
+        self._hdr_dependent_rows.append(self._spin_max_lum)
         self._grp_hdr.add(self._spin_max_lum)
         _fix_spin_icons(self._spin_max_lum)
 
@@ -311,11 +319,29 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._spin_max_avg_lum.set_title("Max Avg Luminance")
         self._spin_max_avg_lum.set_digits(1)
         self._spin_max_avg_lum.connect("notify::value", self._on_changed)
+        self._hdr_dependent_rows.append(self._spin_max_avg_lum)
         self._grp_hdr.add(self._spin_max_avg_lum)
         _fix_spin_icons(self._spin_max_avg_lum)
 
         # Default to insensitive
         self._grp_hdr.set_sensitive(False)
+
+    def _set_rows_dimmed(self, widgets: list[Gtk.Widget], dimmed: bool) -> None:
+        """Add/remove the "dim-label" CSS class to all labels in the given rows."""
+        cls = "dim-label"
+        for w in widgets:
+            if dimmed:
+                w.add_css_class(cls)
+            else:
+                w.remove_css_class(cls)
+
+    def _sync_hdr_dependent_setting_dimming(self) -> None:
+        """Dim HDR output controls that are only applied under CM auto/hdr/hdredid."""
+        cm_val = self._combo_cm.get_model().get_string(self._combo_cm.get_selected())
+        if cm_val in ("auto" ,"hdr", "hdredid"):
+            self._set_rows_dimmed(self._hdr_dependent_rows, False)
+        else:
+            self._set_rows_dimmed(self._hdr_dependent_rows, True)
 
     def set_compositor(
         self,
@@ -503,6 +529,7 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._spin_max_avg_lum.set_value(monitor.max_avg_luminance)
 
         self._building = False
+        self._sync_hdr_dependent_setting_dimming()
         self._sync_icc_ui()
 
     def _apply_to_monitor(self) -> None:
@@ -593,6 +620,7 @@ class PropertiesPanel(Adw.PreferencesPage):
             return
         self._sync_icc_ui()
         self._apply_to_monitor()
+        self._sync_hdr_dependent_setting_dimming()
         self.emit("property-changed")
 
     def _sync_icc_ui(self) -> None:
