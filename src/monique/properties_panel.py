@@ -263,10 +263,6 @@ class PropertiesPanel(Adw.PreferencesPage):
         )
         self.add(self._grp_hdr)
 
-        self._sw_hdr = Adw.SwitchRow(title="HDR")
-        self._sw_hdr.connect("notify::active", self._on_changed)
-        self._grp_hdr.add(self._sw_hdr)
-
         self._combo_sdr_eotf = Adw.ComboRow(title="SDR EOTF")
         self._combo_sdr_eotf.set_model(Gtk.StringList.new(["Global", "sRGB", "Gamma 2.2"]))
         self._combo_sdr_eotf.connect("notify::selected", self._on_changed)
@@ -518,7 +514,6 @@ class PropertiesPanel(Adw.PreferencesPage):
         self._spin_res_right.set_value(monitor.reserved_right)
 
         # HDR / EDID Override
-        self._sw_hdr.set_active(monitor.hdr)
         self._combo_sdr_eotf.set_selected(monitor.sdr_eotf)
         self._combo_supports_hdr.set_selected(monitor.supports_hdr)
         self._combo_supports_wide.set_selected(monitor.supports_wide_color)
@@ -592,7 +587,6 @@ class PropertiesPanel(Adw.PreferencesPage):
         m.reserved_right = int(self._spin_res_right.get_value())
 
         # HDR / EDID Override
-        m.hdr = self._sw_hdr.get_active()
         m.sdr_eotf = self._combo_sdr_eotf.get_selected()
         m.supports_hdr = self._combo_supports_hdr.get_selected()
         m.supports_wide_color = self._combo_supports_wide.get_selected()
